@@ -17,14 +17,6 @@ interface Data {
 // Define the type for dataStore
 const dataStore: Record<string, Data> = {}
 
-// Set an interval to clear the dataStore every 5 minutes
-// const interval = setInterval(() => {
-//     console.log("Clearing dataStore")
-//     for (const key in dataStore) {
-//       delete dataStore[key]
-//     }
-//   }, 300000) // 300000 milliseconds = 5 minutes
-
 app.post('/data', (req, res) => {
   const { node, isp, status } = req.body
   const timestamp = Date.now()
@@ -38,36 +30,35 @@ app.post('/data', (req, res) => {
 })
 
 app.get('/data', (req, res) => {
-  let formattedResponse = ''
-  const currentTime = Date.now()
+  let statusMap: { [key: string]: number } = {}
+  let lastUpdateMap: { [key: string]: number } = {}
+
+  // Iterate over each node in dataStore
   for (const node in dataStore) {
-    dataStore[node].statuses = dataStore[node].statuses.filter(status =>
-      currentTime - status.timestamp < 300000    
-    )
-    
+    // Iterate over each status in the node
     dataStore[node].statuses.forEach(status => {
-      formattedResponse += `multiisp_status{node="${node}",isp="${status.isp}"} ${status.status}\n`
+      // Create a unique key for each node-isp pair
+      const key = `node="${node}",isp="${status.isp}"`
+      
+      // Check value
+      if (statusMap[key] !== status.status) {
+        // Update the status and timestamp
+        statusMap[key] = status.status
+        lastUpdateMap[key] = Math.floor(Date.now() / 1000)
+      }
     })
+  }
+
+  let formattedResponse = ''
+  for (const key in statusMap) {
+    formattedResponse += `multiisp_status{${key}} ${statusMap[key]}\n`
+    if (lastUpdateMap[key]) {
+      formattedResponse += `status_lastupdate{${key}} ${lastUpdateMap[key]}\n`
+    }
   }
   
   res.type('text').send(formattedResponse.trim())
 })
-
-// app.get('/data/:node', (req, res) => {
-//   const node = req.params.node
-//   const data = dataStore[node]
-  
-//   if(data){
-//     const formattedData = `multiisp_status{node="${node},"isp="${data.isp}"} ${data.status}`
-//     res.send(formattedData)
-//   } else {
-//     res.status(404).send('Data not found')
-//   }
-// })
-
-// app.get('/data', (req, res) => {
-//   res.json(dataStore)
-// })
 
 const PORT = 3002
 app.listen(PORT, () => {
